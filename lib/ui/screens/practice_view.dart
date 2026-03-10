@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../logic/cubits/vocab_cubit.dart';
 import '../../logic/cubits/practice_cubit.dart';
@@ -30,10 +29,37 @@ class PracticeView extends StatelessWidget {
                 Positioned(
                   bottom: 16,
                   right: 16,
-                  child: FloatingActionButton(
-                    onPressed: () => _showControls(context),
-                    backgroundColor: Colors.orangeAccent,
-                    child: const Icon(Icons.tune, color: Colors.black),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      FloatingActionButton(
+                        mini: true,
+                        onPressed: () => _showControls(context),
+                        backgroundColor: Colors.white10,
+                        child: const Icon(Icons.tune, color: Colors.white70),
+                      ),
+                      const SizedBox(height: 12),
+                      BlocBuilder<VocabCubit, VocabState>(
+                        builder: (context, vocabState) {
+                          return BlocBuilder<PracticeCubit, PracticeState>(
+                            builder: (context, practiceState) {
+                              return FloatingActionButton(
+                                onPressed: () {
+                                  final selectedSetId = practiceState.selectedSetId;
+                                  final set = vocabState.sets.firstWhere(
+                                    (s) => s.id == selectedSetId,
+                                    orElse: () => vocabState.sets.first,
+                                  );
+                                  context.read<PracticeCubit>().scramble(set);
+                                },
+                                backgroundColor: Colors.orangeAccent,
+                                child: const Icon(Icons.shuffle, color: Colors.black),
+                              );
+                            },
+                          );
+                        },
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -63,7 +89,7 @@ class PracticeView extends StatelessWidget {
         padding: EdgeInsets.only(
           bottom: MediaQuery.of(context).viewInsets.bottom,
         ),
-        height: MediaQuery.of(context).size.height * 0.6,
+        height: MediaQuery.of(context).size.height * 0.4,
         child: SingleChildScrollView(
           child: _buildSidebar(context, isBottomSheet: true),
         ),
@@ -89,25 +115,6 @@ class PracticeView extends StatelessWidget {
                 children: [
                   Text('Controls', style: Theme.of(context).textTheme.titleLarge),
                   const SizedBox(height: 32),
-
-                  // Select List
-                  const Text('Select List to Train'),
-                  const SizedBox(height: 8),
-                  DropdownButtonFormField<String>(
-                    value: sets.any((s) => s.id == selectedSetId)
-                        ? selectedSetId
-                        : null,
-                    items: sets
-                        .map((s) =>
-                            DropdownMenuItem(value: s.id, child: Text(s.name)))
-                        .toList(),
-                    onChanged: (val) =>
-                        context.read<PracticeCubit>().updateSettings(selectedSetId: val),
-                    decoration: const InputDecoration(
-                        contentPadding: EdgeInsets.symmetric(horizontal: 12)),
-                  ),
-
-                  const SizedBox(height: 24),
 
                   // Select source column
                   const Text('What should be shown?'),
@@ -182,56 +189,69 @@ class PracticeView extends StatelessWidget {
   }
 
   Widget _buildMainArea(BuildContext context, {bool isMobile = false}) {
-    return BlocBuilder<PracticeCubit, PracticeState>(
-      builder: (context, state) {
-        return Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  if (state.sequence.isNotEmpty)
-                    TextButton.icon(
-                      onPressed: () {
-                        Clipboard.setData(
-                            ClipboardData(text: state.sequence.join(' ')));
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                              content: Text('Copied to clipboard'),
-                              duration: Duration(seconds: 1)),
-                        );
-                      },
-                      icon: const Icon(Icons.copy, size: 18),
-                      label: const Text('Copy'),
-                    ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: state.sequence.isEmpty
-                  ? Center(
-                      child: Text('Press Scramble to generate a sequence',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.5))))
-                  : SingleChildScrollView(
-                      padding: EdgeInsets.all(isMobile ? 16 : 32),
-                      child: Wrap(
-                        spacing: 12,
-                        runSpacing: 12,
-                        alignment: WrapAlignment.center,
-                        children: state.sequence
-                            .map((item) => _buildSequenceItem(
-                                context, item, state.sourceColumn, isMobile))
-                            .toList(),
+    return BlocBuilder<VocabCubit, VocabState>(
+      builder: (context, vocabState) {
+        return BlocBuilder<PracticeCubit, PracticeState>(
+          builder: (context, practiceState) {
+            final sets = vocabState.sets;
+            final selectedSetId = practiceState.selectedSetId;
+            final selectedSet = sets.isEmpty
+                ? null
+                : sets.firstWhere((s) => s.id == selectedSetId,
+                    orElse: () => sets.first);
+
+            return Column(
+              children: [
+                if (selectedSet != null)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 24),
+                    child: Text(
+                      selectedSet.name.toUpperCase(),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 4,
+                        color: Colors.white38,
                       ),
                     ),
-            ),
-            if (isMobile) const SizedBox(height: 80), // Space for FAB
-          ],
+                  ),
+                Expanded(
+                  child: Center(
+                    child: SingleChildScrollView(
+                      padding: EdgeInsets.symmetric(
+                          horizontal: isMobile ? 16 : 48,
+                          vertical: isMobile ? 16 : 32),
+                      child: stateWidget(context, practiceState, isMobile),
+                    ),
+                  ),
+                ),
+                if (isMobile) const SizedBox(height: 100), // Space for FABs
+              ],
+            );
+          },
         );
       },
+    );
+  }
+
+  Widget stateWidget(
+      BuildContext context, PracticeState state, bool isMobile) {
+    if (state.sequence.isEmpty) {
+      return Text('Press Scramble to generate a sequence',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: Colors.white.withValues(alpha: 0.5)));
+    }
+
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      alignment: WrapAlignment.center,
+      runAlignment: WrapAlignment.center,
+      children: state.sequence
+          .map((item) =>
+              _buildSequenceItem(context, item, state.sourceColumn, isMobile))
+          .toList(),
     );
   }
 
